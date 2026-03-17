@@ -1,0 +1,4 @@
+name: Smart Mock (simulates correct fixes)
+type: script
+config:
+  script: scripts/smart_mock.py
