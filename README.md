@@ -2,76 +2,129 @@
 
 A pluggable framework for evaluating AI coding agents — **where agents judge agents**.
 
-AAE runs coding tasks against any CLI-based agent (Claude Code, Cursor, etc.), then scores the results using both deterministic checks and LLM-as-judge evaluation. Every run archives the full workspace, agent output, and per-metric scores for human review.
+## Why "Agent-as-Judge"?
+
+Most benchmarks use simple pass/fail tests. But real-world agent tasks — refactoring code, writing reports, analyzing data — have no single "correct answer". AAE goes beyond **LLM-as-Judge** (a single API call scoring text) to **Agent-as-Judge**: a full agent with tools, file access, and code execution capabilities that reviews another agent's work, just like a human reviewer would.
+
+```mermaid
+flowchart LR
+    subgraph "Traditional Eval"
+        T1[Agent Output] --> G1[Unit Tests<br/>pass / fail]
+    end
+
+    subgraph "LLM-as-Judge"
+        T2[Agent Output] --> G2[Single LLM Call<br/>score 0-10]
+    end
+
+    subgraph "Agent-as-Judge (AAE)"
+        T3[Agent Output<br/>+ Workspace<br/>+ Transcript] --> G3[Judge Agent<br/>reads files, runs code,<br/>reasons over evidence]
+        G3 --> V[Structured Verdict<br/>per-dimension scores<br/>+ reasoning]
+    end
+```
+
+The judge agent doesn't just read the output — it can inspect the workspace, run the code, diff against originals, and reason about quality across multiple dimensions. This mirrors how a senior engineer reviews a pull request: not just "does it compile?" but "is this the right approach?"
 
 ## How It Works
 
 ```mermaid
-flowchart LR
-    subgraph Input
-        T[📋 Task<br/>prompt + workspace]
-        A[🤖 Agent<br/>Claude Code / Cursor / CLI]
+flowchart TB
+    subgraph Define["① Define"]
+        TASK[📋 Task<br/>prompt + workspace + eval spec]
+        AGENT[🤖 Agent Under Test<br/>Claude Code / Cursor / any CLI]
     end
 
-    subgraph Execution
-        E[📦 Environment<br/>sandbox workspace]
+    subgraph Execute["② Execute"]
+        ENV[📦 Sandbox<br/>isolated workspace copy]
+        RUN[Agent runs task<br/>modifies files]
     end
 
-    subgraph Evaluation
-        CC[✅ Code Check<br/>pytest, scripts,<br/>file checks]
-        LJ[🧠 LLM Judge<br/>accuracy, quality,<br/>insight]
+    subgraph Evaluate["③ Evaluate"]
+        CC[✅ Code Checks<br/>deterministic]
+        AJ[🧠 Agent Judge<br/>agentic evaluation]
+        COMP[⚖️ Composite Score<br/>weighted combination]
     end
 
-    subgraph Output
-        R[📊 Result<br/>scores + workspace<br/>+ agent log]
+    subgraph Archive["④ Archive"]
+        WS[📁 Workspace snapshot<br/>before & after]
+        LOG[📝 Agent transcript]
+        SCORE[📊 Per-metric scores<br/>+ judge reasoning]
     end
 
-    T --> E
-    A --> E
-    E --> CC
-    E --> LJ
-    CC --> R
-    LJ --> R
+    TASK --> ENV
+    AGENT --> RUN
+    ENV --> RUN
+    RUN --> CC
+    RUN --> AJ
+    CC --> COMP
+    AJ --> COMP
+    COMP --> WS
+    COMP --> LOG
+    COMP --> SCORE
 ```
 
-## Core Idea: Agent-as-Judge
+Every run archives the complete workspace (before and after), agent output transcript, and detailed per-metric scores with judge reasoning — enabling human review of any result.
 
-Traditional benchmarks use only deterministic checks (tests pass / fail). AAE combines both:
+## Evaluation Philosophy
+
+Inspired by [Anthropic's eval framework](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents), AAE is built around these principles:
+
+### Three Layers of Grading
+
+| Layer | What | When to Use |
+|-------|------|-------------|
+| **Code Check** | pytest, file existence, script output, exit codes | Verifiable outcomes with clear pass/fail |
+| **Agent Judge** | An agent that reads files, runs code, and reasons | Subjective quality, design decisions, completeness |
+| **Human Review** | Browse workspace + transcript in web UI | Calibration, edge cases, final sign-off |
 
 ```mermaid
 flowchart TB
-    W[Agent Workspace Output] --> C{Composite Evaluator}
+    W[Agent Workspace] --> C{Composite Evaluator}
 
-    C --> D[Code Checks<br/>weight: 0.4]
-    C --> L[LLM Judge<br/>weight: 0.6]
+    C --> D["Code Checks (deterministic)<br/>weight: configurable"]
+    C --> A["Agent Judge (agentic)<br/>weight: configurable"]
 
-    D --> D1[✅ tests pass?]
-    D --> D2[✅ file exists?]
-    D --> D3[✅ output valid?]
+    D --> D1["✅ tests pass"]
+    D --> D2["✅ file exists"]
+    D --> D3["✅ output valid"]
 
-    L --> L1[📝 accuracy]
-    L --> L2[📝 completeness]
-    L --> L3[📝 insight]
+    A --> A1["📝 accuracy<br/><i>reads CSV, verifies numbers</i>"]
+    A --> A2["📝 completeness<br/><i>checks all sections present</i>"]
+    A --> A3["📝 insight<br/><i>evaluates reasoning quality</i>"]
 
-    D1 & D2 & D3 --> S[Final Score]
-    L1 & L2 & L3 --> S
+    D1 & D2 & D3 --> S["Final Score + Reasoning"]
+    A1 & A2 & A3 --> S
+
+    S --> H["👤 Human Review<br/><i>workspace + transcript in web UI</i>"]
 ```
 
-This lets AAE evaluate tasks that have no single "correct answer" — like writing reports, refactoring code, or generating analysis.
+### Outcome vs Transcript
+
+AAE evaluates both **what the agent produced** (outcome) and **how it got there** (transcript):
+
+- **Outcome**: Did the code pass tests? Does the report contain correct numbers?
+- **Transcript**: What did the agent do? How long did it take? What tools did it use?
+
+Both are archived for every run, because a passing score doesn't tell the whole story — you need to read the transcripts.
+
+### Capability vs Regression
+
+- **Capability evals** start at low pass rates — tasks the agent struggles with, giving you a hill to climb
+- **Regression evals** should stay near 100% — protecting against backsliding when you change prompts or models
+
+As capability evals reach high pass rates, they graduate into the regression suite.
 
 ## Features
 
-- **Agent-as-Judge** — LLM evaluators score subjective quality (readability, insight, accuracy)
-- **Deterministic checks** — pytest, file existence, script output, custom Python scripts
-- **Composite scoring** — weighted combination of code checks + LLM judges
-- **Full archival** — workspaces, agent logs, and original files preserved for every run
-- **Web dashboard** — browse results, drill into metrics, view workspace files in-browser
+- **Agent-as-Judge** — judge agents that read files, run code, and reason over evidence
+- **Code checks** — pytest, file existence, script output, custom Python scripts
+- **Composite scoring** — weighted combination of code checks + agent judges
+- **Full archival** — workspaces (before & after), agent transcripts, judge reasoning
+- **Web dashboard** — sidebar navigation, drill into metrics, browse workspace files
 - **Pluggable** — add tasks and agents via YAML, no code changes needed
 
 ## Quick Start
 
 ```bash
-# Install
 uv sync
 
 # List available tasks and agents
@@ -102,38 +155,32 @@ uv run agent-eval serve --port 9090
 ```mermaid
 graph TB
     subgraph CLI["CLI (agent-eval)"]
-        RUN[run] --> RUNNER[Runner]
+        RUN[run]
         LIST[list]
         RES[results]
         SERVE[serve]
     end
 
     subgraph Core
+        RUN --> RUNNER[Runner]
         RUNNER --> LOADER[Loader<br/>YAML → models]
-        RUNNER --> ENV[Environment<br/>workspace setup]
+        RUNNER --> ENV[Environment<br/>sandbox setup]
         RUNNER --> AG[Agent<br/>execute task]
-        RUNNER --> MET[Metrics<br/>evaluate output]
+        RUNNER --> MET[Metrics<br/>code check + agent judge]
     end
 
     subgraph Storage
         LOADER --> TASKS[(tasks/)]
         LOADER --> AGENTS[(agents/)]
-        RUNNER --> RESULTS[(results/)]
+        RUNNER --> RESULTS[(results/<br/>scores + workspaces<br/>+ transcripts)]
     end
 
-    subgraph Web["Web UI"]
+    subgraph Web["Web Dashboard"]
         SERVE --> SERVER[API Server]
         SERVER --> RESULTS
-        SERVER --> STATIC[React SPA]
+        SERVER --> SPA[React SPA<br/>sidebar + detail view<br/>+ file browser]
     end
 ```
-
-| Component | Role | Config |
-|-----------|------|--------|
-| **Task** | What to do | `tasks/{id}/task.yaml` + `workspace/` + `eval.yaml` |
-| **Agent** | Who does it | `agents/{id}.yaml` (claude-code, cli, mock, script) |
-| **Environment** | Where to run | Local sandbox or Docker |
-| **Metric** | How to judge | `code_check` (deterministic) or `llm_judge` (LLM scoring) |
 
 ## Results Structure
 
@@ -142,19 +189,19 @@ Every run is fully archived for human review:
 ```
 results/20260318_070812_claude-code/
 ├── summary.json                        # overall scores, by-agent, by-category
-├── csv-stats.json                      # per-task metric details
+├── csv-stats.json                      # per-task metric details + judge reasoning
 ├── django-11099.json
 ├── workspaces/
 │   └── claude-code/
 │       ├── csv-stats/
-│       │   ├── .originals/             # files before agent ran
+│       │   ├── .originals/             # files before agent ran (for diff)
 │       │   ├── stats.py               # files after agent ran
 │       │   └── test_data.csv
 │       └── django-11099/
 │           └── validators.py
 └── logs/
     └── claude-code/
-        ├── csv-stats.log              # raw agent output
+        ├── csv-stats.log              # full agent transcript
         └── django-11099.log
 ```
 
@@ -163,7 +210,7 @@ results/20260318_070812_claude-code/
 ```
 tasks/my-task/
 ├── task.yaml           # prompt + metadata
-├── eval.yaml           # metrics definition
+├── eval.yaml           # evaluation spec
 └── workspace/          # initial files given to the agent
 ```
 
@@ -177,7 +224,7 @@ metadata:
   difficulty: easy
 ```
 
-**eval.yaml:**
+**eval.yaml** — combine code checks and agent judges:
 ```yaml
 evaluator:
   type: composite
@@ -193,6 +240,7 @@ evaluator:
       weight: 0.4
       rubric:
         quality: "Is the fix clean and minimal?"
+        correctness: "Does it address the root cause, not just the symptom?"
 ```
 
 ## Adding an Agent
@@ -223,6 +271,13 @@ Supported types: `claude-code`, `cli`, `mock`, `script`
 - **Backend**: Python 3.14, PyYAML, stdlib HTTP server
 - **Frontend**: Vite + React + TypeScript
 - **Package manager**: uv
+
+## References
+
+- [Demystifying Evals for AI Agents](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents) — Anthropic's guide to agent evaluation
+- [Building Effective Agents](https://www.anthropic.com/engineering/building-effective-agents) — Anthropic's agent design patterns
+- [SWE-bench](https://www.swebench.com/) — coding agent benchmark
+- [τ-bench](https://github.com/sierra-research/tau2-bench) — conversational agent benchmark
 
 ## License
 
