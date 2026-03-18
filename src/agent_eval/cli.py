@@ -234,6 +234,11 @@ def cmd_results(args):
         print(f"  {d.name:48s} {o['score']:.0%}  {o['passed']}/{o['total']}")
 
 
+def cmd_serve(args):
+    from agent_eval.server import serve
+    serve(host=args.host, port=args.port)
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="agent-eval",
@@ -261,6 +266,12 @@ def main():
     p_res = sub.add_parser("results", help="View past results")
     p_res.add_argument("run_id", nargs="?", help="Filter by run directory name")
     p_res.set_defaults(func=cmd_results)
+
+    # serve
+    p_serve = sub.add_parser("serve", help="Start web UI")
+    p_serve.add_argument("--port", type=int, default=8080)
+    p_serve.add_argument("--host", default="0.0.0.0")
+    p_serve.set_defaults(func=cmd_serve)
 
     args = parser.parse_args()
     if not args.command:
