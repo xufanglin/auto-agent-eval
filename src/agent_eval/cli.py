@@ -5,11 +5,13 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from agent_eval.agents import create_agent
 from agent_eval.environment import create_environment
 from agent_eval.loader import (
+    RESULTS_DIR,
     list_agents, list_tasks, load_agent_config, load_environment_config,
     load_eval_spec, load_task,
 )
@@ -65,6 +67,80 @@ def print_summary(suite: EvalSuite, tasks: dict) -> None:
     print(f"{'='*60}")
 
 
+# ── Results I/O ─────────────────────────────────────────
+
+def _save_results(suite: EvalSuite, tasks: dict, agent_ids: list[str], output: str | None) -> None:
+    """Save results to structured directory layout.
+
+    Layout:
+        results/{timestamp}_{agents}/
+            summary.json        — suite-level overview
+            {task_id}.json      — per-task detail
+    """
+    if output:
+        # Explicit -o: write single file (backward compat)
+        p = Path(output)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(
+            {"suite": suite.name, "runs": [r.to_dict() for r in suite.runs]},
+            indent=2, ensure_ascii=False,
+        ))
+        print(f"\nResults saved to {output}")
+        return
+
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    agents_label = "+".join(sorted(set(agent_ids)))
+    run_dir = RESULTS_DIR / f"{ts}_{agents_label}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    # Per-task files
+    for run in suite.runs:
+        (run_dir / f"{run.task_id}.json").write_text(
+            json.dumps(run.to_dict(), indent=2, ensure_ascii=False)
+        )
+
+    # Summary
+    s = suite.summary(tasks)
+    summary = {
+        "suite": suite.name,
+        "timestamp": ts,
+        "agents": sorted(set(agent_ids)),
+        "tasks": [r.task_id for r in suite.runs],
+        "overall": {
+            "score": round(s.average_score, 4),
+            "passed": s.passed,
+            "total": s.total,
+        },
+        "by_agent": {k: round(v, 4) for k, v in s.by_agent.items()},
+        "by_category": {k: round(v, 4) for k, v in s.by_category.items()},
+        "runs": [
+            {
+                "task": r.task_id,
+                "agent": r.agent_id,
+                "score": round(r.result.score, 4) if r.result else 0,
+                "passed": r.result.passed if r.result else False,
+                "duration": r.result.duration_seconds if r.result else 0,
+                "status": r.status,
+            }
+            for r in suite.runs
+        ],
+    }
+    (run_dir / "summary.json").write_text(
+        json.dumps(summary, indent=2, ensure_ascii=False)
+    )
+    print(f"\nResults saved to {run_dir}/")
+
+
+def _load_result_dirs() -> list[Path]:
+    """List all result directories, newest first."""
+    if not RESULTS_DIR.exists():
+        return []
+    return sorted(
+        (d for d in RESULTS_DIR.iterdir() if d.is_dir() and (d / "summary.json").exists()),
+        reverse=True,
+    )
+
+
 # ── Commands ────────────────────────────────────────────
 
 def cmd_list(args):
@@ -82,7 +158,6 @@ def cmd_list(args):
 
 
 def cmd_run(args):
-    # Resolve tasks
     available_tasks = list_tasks()
     task_ids = args.tasks if args.tasks else available_tasks
     if args.category:
@@ -91,10 +166,8 @@ def cmd_run(args):
             if load_task(tid).category == args.category
         ]
 
-    # Resolve agents
     agent_ids = args.agent if args.agent else ["mock" if args.mock else "claude-code"]
 
-    # Build suite
     suite = EvalSuite(name=args.name or "eval")
     tasks = {}
     env_config = load_environment_config({"config": {"keep": args.keep_workspace}})
@@ -122,16 +195,43 @@ def cmd_run(args):
 
     if suite.runs:
         print_summary(suite, tasks)
+        _save_results(suite, tasks, agent_ids, args.output)
 
-    if args.output:
-        out = {
-            "suite": suite.name,
-            "runs": [r.to_dict() for r in suite.runs],
-        }
-        p = Path(args.output)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(json.dumps(out, indent=2, ensure_ascii=False))
-        print(f"\nResults saved to {args.output}")
+
+def cmd_results(args):
+    dirs = _load_result_dirs()
+    if not dirs:
+        print("No results found.")
+        return
+
+    if args.run_id:
+        matches = [d for d in dirs if args.run_id in d.name]
+        if not matches:
+            print(f"No results matching '{args.run_id}'")
+            return
+        # Show detail for matched run
+        for d in matches:
+            summary = json.loads((d / "summary.json").read_text())
+            print(f"\n{'='*60}")
+            print(f"Run:    {d.name}")
+            print(f"Suite:  {summary['suite']}")
+            print(f"Agents: {', '.join(summary['agents'])}")
+            print(f"Score:  {summary['overall']['score']:.0%}  ({summary['overall']['passed']}/{summary['overall']['total']} passed)")
+            print(f"{'─'*60}")
+            for r in summary["runs"]:
+                icon = "✅" if r["passed"] else "❌"
+                print(f"  {icon} {r['agent']:20s} {r['task']:20s} {r['score']:.0%}  {r['duration']:.0f}s")
+            print(f"{'='*60}")
+        return
+
+    # List all runs
+    print(f"{'Run':50s} {'Score':>8s} {'Pass':>8s}")
+    print("─" * 70)
+    for d in dirs:
+        summary = json.loads((d / "summary.json").read_text())
+        o = summary["overall"]
+        agents = "+".join(summary["agents"])
+        print(f"  {d.name:48s} {o['score']:.0%}  {o['passed']}/{o['total']}")
 
 
 def main():
@@ -153,9 +253,14 @@ def main():
     p_run.add_argument("--category", "-c", help="Filter tasks by category")
     p_run.add_argument("--mock", action="store_true", help="Use mock agent")
     p_run.add_argument("--name", "-n", help="Suite name")
-    p_run.add_argument("--output", "-o", help="Save results to JSON")
+    p_run.add_argument("--output", "-o", help="Save results to single JSON file (legacy)")
     p_run.add_argument("--keep-workspace", "-k", action="store_true")
     p_run.set_defaults(func=cmd_run)
+
+    # results
+    p_res = sub.add_parser("results", help="View past results")
+    p_res.add_argument("run_id", nargs="?", help="Filter by run directory name")
+    p_res.set_defaults(func=cmd_results)
 
     args = parser.parse_args()
     if not args.command:

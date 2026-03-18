@@ -14,6 +14,7 @@ if not (PROJECT_ROOT / "tasks").exists():
 
 TASKS_DIR = PROJECT_ROOT / "tasks"
 AGENTS_DIR = PROJECT_ROOT / "agents"
+RESULTS_DIR = PROJECT_ROOT / "results"
 
 
 # ── Tasks ───────────────────────────────────────────────
