@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { fetchRuns, fetchRun } from "./api";
 import type { RunSummary, RunDetail } from "./types";
-import { RunList } from "./components/RunList";
+import { Sidebar } from "./components/Sidebar";
 import { RunView } from "./components/RunView";
 
 export default function App() {
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [selected, setSelected] = useState<RunDetail | null>(null);
+  const [selectedDir, setSelectedDir] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -14,26 +15,24 @@ export default function App() {
   }, []);
 
   const handleSelect = async (dirName: string) => {
-    setLoading(true);
+    setSelectedDir(dirName);
     const detail = await fetchRun(dirName);
     setSelected(detail);
-    setLoading(false);
   };
 
-  if (loading) return <div className="loading">Loading...</div>;
-
   return (
-    <div className="app">
-      <header>
-        <h1 onClick={() => setSelected(null)} style={{ cursor: "pointer" }}>
-          🧪 Agent Eval
-        </h1>
-      </header>
-      <main>
-        {selected ? (
-          <RunView run={selected} onBack={() => setSelected(null)} />
+    <div className="layout">
+      <Sidebar runs={runs} selectedDir={selectedDir} onSelect={handleSelect} loading={loading} />
+      <main className="content">
+        {loading ? (
+          <div className="empty">Loading...</div>
+        ) : selected ? (
+          <RunView run={selected} />
         ) : (
-          <RunList runs={runs} onSelect={handleSelect} />
+          <div className="empty">
+            <div className="empty-icon">🧪</div>
+            <div>Select an evaluation run from the sidebar</div>
+          </div>
         )}
       </main>
     </div>

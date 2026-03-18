@@ -6,16 +6,13 @@ import { formatTimestamp } from "../utils";
 
 interface Props {
   run: RunDetail;
-  onBack: () => void;
 }
 
-export function RunView({ run, onBack }: Props) {
+export function RunView({ run }: Props) {
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
 
   return (
     <div className="run-view">
-      <button className="back-btn" onClick={onBack}>← Back</button>
-
       <div className="run-header">
         <h2>{run.suite}</h2>
         <span className="run-time">{formatTimestamp(run.timestamp)}</span>
@@ -57,20 +54,18 @@ export function RunView({ run, onBack }: Props) {
           const wsKey = `${entry.agent}/${entry.task}`;
           const files = run.workspaces?.[wsKey] || [];
           const log = run.logs?.[wsKey] || "";
-          const isExpanded = expandedTask === `${entry.agent}-${entry.task}`;
           const expandKey = `${entry.agent}-${entry.task}`;
+          const isExpanded = expandedTask === expandKey;
           return (
             <div key={expandKey} className="task-card">
               <div
                 className="task-card-header"
                 onClick={() => setExpandedTask(isExpanded ? null : expandKey)}
               >
-                <span className={`status-icon ${entry.passed ? "pass" : "fail"}`}>
-                  {entry.passed ? "✅" : "❌"}
-                </span>
+                <span className="task-status">{entry.passed ? "✅" : "❌"}</span>
                 <span className="task-name">{entry.task}</span>
                 <span className="task-agent">{entry.agent}</span>
-                <ScoreBar score={entry.score} />
+                <div className="task-bar"><ScoreBar score={entry.score} /></div>
                 <span className="task-duration">{entry.duration.toFixed(1)}s</span>
                 <span className="expand-icon">{isExpanded ? "▼" : "▶"}</span>
               </div>

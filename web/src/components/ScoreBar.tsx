@@ -7,7 +7,9 @@ export function ScoreBar({ score }: Props) {
   const color = pct >= 80 ? "var(--green)" : pct >= 50 ? "var(--yellow)" : "var(--red)";
   return (
     <div className="score-bar">
-      <div className="score-bar-fill" style={{ width: `${pct}%`, background: color }} />
+      <div className="score-bar-track">
+        <div className="score-bar-fill" style={{ width: `${pct}%`, background: color }} />
+      </div>
       <span className="score-bar-label">{pct}%</span>
     </div>
   );
