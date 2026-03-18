@@ -54,12 +54,16 @@ export function RunView({ run, onBack }: Props) {
       <div className="task-list">
         {run.runs.map((entry) => {
           const detail: TaskDetail | undefined = run.task_details[entry.task];
-          const isExpanded = expandedTask === entry.task;
+          const wsKey = `${entry.agent}/${entry.task}`;
+          const files = run.workspaces?.[wsKey] || [];
+          const log = run.logs?.[wsKey] || "";
+          const isExpanded = expandedTask === `${entry.agent}-${entry.task}`;
+          const expandKey = `${entry.agent}-${entry.task}`;
           return (
-            <div key={`${entry.agent}-${entry.task}`} className="task-card">
+            <div key={expandKey} className="task-card">
               <div
                 className="task-card-header"
-                onClick={() => setExpandedTask(isExpanded ? null : entry.task)}
+                onClick={() => setExpandedTask(isExpanded ? null : expandKey)}
               >
                 <span className={`status-icon ${entry.passed ? "pass" : "fail"}`}>
                   {entry.passed ? "✅" : "❌"}
@@ -70,7 +74,9 @@ export function RunView({ run, onBack }: Props) {
                 <span className="task-duration">{entry.duration.toFixed(1)}s</span>
                 <span className="expand-icon">{isExpanded ? "▼" : "▶"}</span>
               </div>
-              {isExpanded && detail && <TaskView detail={detail} />}
+              {isExpanded && detail && (
+                <TaskView detail={detail} files={files} log={log} dirName={run.dir_name} agent={entry.agent} task={entry.task} />
+              )}
             </div>
           );
         })}

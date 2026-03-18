@@ -89,6 +89,8 @@ class EvalRun:
     agent_id: str
     status: Literal["pending", "running", "completed", "failed"] = "pending"
     result: RunResult | None = None
+    workspace: Path | None = None
+    agent_output: str = ""
 
     @staticmethod
     def create(task_id: str, agent_id: str) -> EvalRun:
@@ -100,6 +102,8 @@ class EvalRun:
 
     def to_dict(self) -> dict:
         d = asdict(self)
+        d.pop("workspace", None)
+        d.pop("agent_output", None)
         return d
 
     def to_json(self) -> str:

@@ -17,14 +17,21 @@ def execute_run(
     environment: Environment,
     eval_spec: EvalSpec,
 ) -> EvalRun:
-    """Execute a single evaluation run. Mutates and returns the EvalRun."""
+    """Execute a single evaluation run. Mutates and returns the EvalRun.
+
+    NOTE: Does NOT call environment.cleanup(). Caller is responsible for
+    cleaning up after archiving the workspace.
+    """
     run.status = "running"
     workspace = environment.setup(task)
+    run.workspace = workspace
 
     try:
         start = time.time()
         agent_output = agent.run(task.prompt, workspace)
         duration = time.time() - start
+
+        run.agent_output = agent_output
 
         metric_results = evaluate_all(workspace, eval_spec)
         score, passed = compute_score(metric_results, eval_spec)
@@ -39,15 +46,12 @@ def execute_run(
         run.status = "completed"
 
     except Exception as e:
+        run.agent_output = ""
         run.result = RunResult(
             score=0.0, passed=False, metrics=[],
             duration_seconds=0.0,
         )
         run.status = "failed"
-        run.result.metrics = []
         print(f"  ❌ Run failed: {e}")
-
-    finally:
-        environment.cleanup()
 
     return run

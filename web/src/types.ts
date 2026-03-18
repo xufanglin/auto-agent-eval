@@ -45,4 +45,11 @@ export interface TaskDetail {
 
 export interface RunDetail extends RunSummary {
   task_details: Record<string, TaskDetail>;
+  workspaces: Record<string, WorkspaceFile[]>;
+  logs: Record<string, string>;
+}
+
+export interface WorkspaceFile {
+  path: string;
+  size: number;
 }

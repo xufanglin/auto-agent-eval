@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -74,11 +75,12 @@ def _save_results(suite: EvalSuite, tasks: dict, agent_ids: list[str], output: s
 
     Layout:
         results/{timestamp}_{agents}/
-            summary.json        — suite-level overview
-            {task_id}.json      — per-task detail
+            summary.json
+            {task_id}.json
+            workspaces/{agent_id}/{task_id}/   — full workspace snapshot
+            logs/{agent_id}/{task_id}.log      — agent raw output
     """
     if output:
-        # Explicit -o: write single file (backward compat)
         p = Path(output)
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(json.dumps(
@@ -93,11 +95,25 @@ def _save_results(suite: EvalSuite, tasks: dict, agent_ids: list[str], output: s
     run_dir = RESULTS_DIR / f"{ts}_{agents_label}"
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    # Per-task files
     for run in suite.runs:
+        # Per-task JSON
         (run_dir / f"{run.task_id}.json").write_text(
             json.dumps(run.to_dict(), indent=2, ensure_ascii=False)
         )
+
+        # Archive workspace
+        if run.workspace and run.workspace.exists():
+            dest = run_dir / "workspaces" / run.agent_id / run.task_id
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(run.workspace, dest, dirs_exist_ok=True)
+            shutil.rmtree(run.workspace)
+            run.workspace = None
+
+        # Save agent output log
+        if run.agent_output:
+            log_dir = run_dir / "logs" / run.agent_id
+            log_dir.mkdir(parents=True, exist_ok=True)
+            (log_dir / f"{run.task_id}.log").write_text(run.agent_output)
 
     # Summary
     s = suite.summary(tasks)
@@ -170,7 +186,7 @@ def cmd_run(args):
 
     suite = EvalSuite(name=args.name or "eval")
     tasks = {}
-    env_config = load_environment_config({"config": {"keep": args.keep_workspace}})
+    env_config = load_environment_config({})
 
     for agent_id in agent_ids:
         agent_config = load_agent_config(agent_id)
@@ -259,7 +275,6 @@ def main():
     p_run.add_argument("--mock", action="store_true", help="Use mock agent")
     p_run.add_argument("--name", "-n", help="Suite name")
     p_run.add_argument("--output", "-o", help="Save results to single JSON file (legacy)")
-    p_run.add_argument("--keep-workspace", "-k", action="store_true")
     p_run.set_defaults(func=cmd_run)
 
     # results

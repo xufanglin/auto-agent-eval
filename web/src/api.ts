@@ -11,3 +11,7 @@ export async function fetchRun(dirName: string): Promise<RunDetail> {
   const res = await fetch(`${BASE}/api/runs/${dirName}`);
   return res.json();
 }
+
+export function fileUrl(dirName: string, filePath: string): string {
+  return `${BASE}/api/runs/${dirName}/files/${filePath}`;
+}
