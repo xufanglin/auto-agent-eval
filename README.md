@@ -1,8 +1,63 @@
 # Auto Agent Eval (AAE)
 
-A pluggable framework for evaluating AI coding agents — where agents judge agents.
+A pluggable framework for evaluating AI coding agents — **where agents judge agents**.
 
 AAE runs coding tasks against any CLI-based agent (Claude Code, Cursor, etc.), then scores the results using both deterministic checks and LLM-as-judge evaluation. Every run archives the full workspace, agent output, and per-metric scores for human review.
+
+## How It Works
+
+```mermaid
+flowchart LR
+    subgraph Input
+        T[📋 Task<br/>prompt + workspace]
+        A[🤖 Agent<br/>Claude Code / Cursor / CLI]
+    end
+
+    subgraph Execution
+        E[📦 Environment<br/>sandbox workspace]
+    end
+
+    subgraph Evaluation
+        CC[✅ Code Check<br/>pytest, scripts,<br/>file checks]
+        LJ[🧠 LLM Judge<br/>accuracy, quality,<br/>insight]
+    end
+
+    subgraph Output
+        R[📊 Result<br/>scores + workspace<br/>+ agent log]
+    end
+
+    T --> E
+    A --> E
+    E --> CC
+    E --> LJ
+    CC --> R
+    LJ --> R
+```
+
+## Core Idea: Agent-as-Judge
+
+Traditional benchmarks use only deterministic checks (tests pass / fail). AAE combines both:
+
+```mermaid
+flowchart TB
+    W[Agent Workspace Output] --> C{Composite Evaluator}
+
+    C --> D[Code Checks<br/>weight: 0.4]
+    C --> L[LLM Judge<br/>weight: 0.6]
+
+    D --> D1[✅ tests pass?]
+    D --> D2[✅ file exists?]
+    D --> D3[✅ output valid?]
+
+    L --> L1[📝 accuracy]
+    L --> L2[📝 completeness]
+    L --> L3[📝 insight]
+
+    D1 & D2 & D3 --> S[Final Score]
+    L1 & L2 & L3 --> S
+```
+
+This lets AAE evaluate tasks that have no single "correct answer" — like writing reports, refactoring code, or generating analysis.
 
 ## Features
 
@@ -16,6 +71,7 @@ AAE runs coding tasks against any CLI-based agent (Claude Code, Cursor, etc.), t
 ## Quick Start
 
 ```bash
+# Install
 uv sync
 
 # List available tasks and agents
@@ -33,7 +89,7 @@ uv run agent-eval run -a claude-code -a claude-code-opus
 # Filter by category
 uv run agent-eval run --agent claude-code --category bugfix
 
-# View results
+# View results in terminal
 uv run agent-eval results
 
 # Start web dashboard
@@ -43,8 +99,33 @@ uv run agent-eval serve --port 9090
 
 ## Architecture
 
-```
-Task × Agent × Environment × Evaluator → Result
+```mermaid
+graph TB
+    subgraph CLI["CLI (agent-eval)"]
+        RUN[run] --> RUNNER[Runner]
+        LIST[list]
+        RES[results]
+        SERVE[serve]
+    end
+
+    subgraph Core
+        RUNNER --> LOADER[Loader<br/>YAML → models]
+        RUNNER --> ENV[Environment<br/>workspace setup]
+        RUNNER --> AG[Agent<br/>execute task]
+        RUNNER --> MET[Metrics<br/>evaluate output]
+    end
+
+    subgraph Storage
+        LOADER --> TASKS[(tasks/)]
+        LOADER --> AGENTS[(agents/)]
+        RUNNER --> RESULTS[(results/)]
+    end
+
+    subgraph Web["Web UI"]
+        SERVE --> SERVER[API Server]
+        SERVER --> RESULTS
+        SERVER --> STATIC[React SPA]
+    end
 ```
 
 | Component | Role | Config |
@@ -56,7 +137,7 @@ Task × Agent × Environment × Evaluator → Result
 
 ## Results Structure
 
-Every run is fully archived:
+Every run is fully archived for human review:
 
 ```
 results/20260318_070812_claude-code/
@@ -65,9 +146,10 @@ results/20260318_070812_claude-code/
 ├── django-11099.json
 ├── workspaces/
 │   └── claude-code/
-│       ├── csv-stats/                  # full workspace snapshot
+│       ├── csv-stats/
 │       │   ├── .originals/             # files before agent ran
-│       │   └── stats.py               # files after agent ran
+│       │   ├── stats.py               # files after agent ran
+│       │   └── test_data.csv
 │       └── django-11099/
 │           └── validators.py
 └── logs/
@@ -81,7 +163,7 @@ results/20260318_070812_claude-code/
 ```
 tasks/my-task/
 ├── task.yaml           # prompt + metadata
-├── eval.yaml           # metrics (code_check / llm_judge / composite)
+├── eval.yaml           # metrics definition
 └── workspace/          # initial files given to the agent
 ```
 
@@ -135,6 +217,12 @@ Supported types: `claude-code`, `cli`, `mock`, `script`
 | wordfreq | coding | easy | Build a word frequency CLI tool from scratch |
 | refactor | refactoring | medium | Refactor messy code while preserving behavior |
 | sales-report | analysis | medium | Analyze CSV data and write a Markdown report |
+
+## Tech Stack
+
+- **Backend**: Python 3.14, PyYAML, stdlib HTTP server
+- **Frontend**: Vite + React + TypeScript
+- **Package manager**: uv
 
 ## License
 
