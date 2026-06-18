@@ -1,0 +1,13 @@
+name: write-tests
+prompt: |
+  textutils.py provides 6 text utility functions. Write comprehensive unit tests for all of them in test_textutils.py.
+  Requirements:
+  1. Cover normal cases, edge cases, and error cases for each function
+  2. At least 15 test cases total
+  3. Use Python's built-in unittest or plain assert statements
+  4. Tests must be runnable with: python test_textutils.py
+  Do NOT modify textutils.py.
+metadata:
+  source: custom
+  difficulty: medium
+  category: testing

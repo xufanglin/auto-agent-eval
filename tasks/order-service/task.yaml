@@ -1,0 +1,12 @@
+name: order-service
+prompt: |
+  Read REQUIREMENTS.md and implement the Order Management Service exactly as specified.
+  Deliver all four items listed under "Deliverables":
+  1. Spring Boot project under order-service/
+  2. Integration tests (./mvnw test must pass)
+  3. Dockerfile with multi-stage build
+  4. README.md (10+ lines)
+metadata:
+  source: custom
+  difficulty: hard
+  category: full-stack

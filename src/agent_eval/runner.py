@@ -2,12 +2,32 @@
 
 from __future__ import annotations
 
+import re
 import time
 
 from agent_eval.agents import Agent
 from agent_eval.environment import Environment
 from agent_eval.metrics import compute_score, evaluate_all
 from agent_eval.models import EvalRun, EvalSpec, RunResult, Task
+
+
+def _parse_cost(agent_output: str) -> float | None:
+    """Extract credit cost from agent output.
+
+    Supports:
+    - kiro:   '▸ Credits: 0.33'
+    - copilot: 'AI Credits <ansi>4.71'
+    """
+    # Strip ANSI escape codes before matching
+    clean = re.sub(r'\x1b\[[0-9;]*m', '', agent_output)
+    for pattern in [
+        r'Credits:\s*([\d.]+)',   # kiro: ▸ Credits: 0.33
+        r'AI Credits\s+([\d.]+)', # copilot: AI Credits 4.71
+    ]:
+        m = re.search(pattern, clean)
+        if m:
+            return float(m.group(1))
+    return None
 
 
 def execute_run(
@@ -36,12 +56,18 @@ def execute_run(
         metric_results = evaluate_all(workspace, eval_spec)
         score, passed = compute_score(metric_results, eval_spec)
 
+        cost = _parse_cost(agent_output)
+        credit_price = agent.config.config.get("credit_price")
+        cost_usd = round(cost * credit_price, 4) if cost is not None and credit_price else None
+
         run.result = RunResult(
             score=score,
             passed=passed,
             metrics=metric_results,
             duration_seconds=round(duration, 2),
             agent_output_length=len(agent_output),
+            cost=cost,
+            cost_usd=cost_usd,
         )
         run.status = "completed"
 

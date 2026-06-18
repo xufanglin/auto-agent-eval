@@ -74,8 +74,8 @@ class CodeCheckEvaluator(MetricEvaluator):
 
     def _check_python(self, workspace: Path, cfg: dict) -> MetricResult:
         try:
-            local_vars: dict = {"workspace": workspace}
-            exec(cfg["script"], {"__builtins__": __builtins__}, local_vars)
+            local_vars: dict = {"__builtins__": __builtins__, "workspace": workspace}
+            exec(cfg["script"], local_vars)
             score = float(local_vars.get("score", 0.0))
             reason = str(local_vars.get("reason", ""))
             return MetricResult(

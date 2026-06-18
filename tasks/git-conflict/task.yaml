@@ -1,0 +1,13 @@
+name: git-conflict
+prompt: |
+  auth.py has merge conflicts from two branches:
+  - HEAD (main): stricter policy — 10-char password, special char required, lock after 3 attempts
+  - feature/relax-password-policy: looser policy — 8-char password, no special char, lock after 5 attempts
+
+  Resolve the conflicts by adopting the feature branch's relaxed policy (8 chars, no special char requirement, lock after 5 attempts).
+  The file must be valid Python with no conflict markers.
+  Run `python test_auth.py` to verify.
+metadata:
+  source: custom
+  difficulty: easy
+  category: bugfix

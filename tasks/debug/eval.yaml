@@ -1,0 +1,61 @@
+evaluator:
+  type: composite
+  evaluators:
+    - type: code
+      weight: 0.7
+      checks:
+        - name: "all tests pass"
+          type: command
+          cmd: "python test_cart.py"
+          expect_exit: 0
+
+        - name: "discount bug fixed"
+          type: python
+          script: |
+            import sys, importlib.util
+            spec = importlib.util.spec_from_file_location("cart", workspace / "cart.py")
+            mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+            result = mod.calculate_discount(100, 20)
+            score = 1.0 if abs(result - 80.0) < 0.01 else 0.0
+            reason = f"calculate_discount(100, 20) = {result:.2f}, expected 80.00"
+
+        - name: "tax bug fixed"
+          type: python
+          script: |
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("cart", workspace / "cart.py")
+            mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+            result = mod.apply_tax(100)
+            score = 1.0 if abs(result - 110.0) < 0.01 else 0.0
+            reason = f"apply_tax(100) = {result:.2f}, expected 110.00"
+
+        - name: "cart_total applies tax"
+          type: python
+          script: |
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("cart", workspace / "cart.py")
+            mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+            items = [{"name": "A", "price": 100, "quantity": 2, "discount_percent": 0}]
+            result = mod.cart_total(items)
+            score = 1.0 if abs(result - 220.0) < 0.01 else 0.0
+            reason = f"cart_total = {result:.2f}, expected 220.00"
+
+        - name: "most_expensive handles empty list"
+          type: python
+          script: |
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("cart", workspace / "cart.py")
+            mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+            try:
+                result = mod.most_expensive([])
+                score = 1.0 if result is None or result == "" else 0.5
+                reason = f"most_expensive([]) = {result!r}"
+            except Exception as e:
+                score, reason = 0.0, f"Raised exception: {e}"
+
+    - type: llm_judge
+      weight: 0.3
+      model: claude
+      rubric:
+        correctness: "Are all 4 bugs fixed correctly without breaking any logic?"
+        minimalism: "Did the agent fix only the bugs, without unnecessary rewrites?"

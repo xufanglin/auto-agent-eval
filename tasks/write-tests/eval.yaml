@@ -1,0 +1,51 @@
+evaluator:
+  type: composite
+  evaluators:
+    - type: code
+      weight: 0.6
+      checks:
+        - name: "test_textutils.py exists"
+          type: file_exists
+          path: test_textutils.py
+
+        - name: "tests run without error"
+          type: command
+          cmd: "python test_textutils.py"
+          expect_exit: 0
+
+        - name: "at least 15 test cases"
+          type: python
+          script: |
+            import re
+            content = (workspace / 'test_textutils.py').read_text()
+            # count def test_ functions or assert statements
+            test_funcs = len(re.findall(r'def test_', content))
+            asserts = len(re.findall(r'\bassert\b', content))
+            count = max(test_funcs, asserts)
+            score = 1.0 if count >= 15 else count / 15
+            reason = f"Found {test_funcs} test functions, {asserts} assert statements"
+
+        - name: "covers all 6 functions"
+          type: python
+          script: |
+            content = (workspace / 'test_textutils.py').read_text()
+            funcs = ['word_count', 'char_count', 'most_common_words',
+                     'average_word_length', 'is_palindrome', 'truncate']
+            covered = [f for f in funcs if f in content]
+            score = len(covered) / len(funcs)
+            reason = f"Covered {len(covered)}/{len(funcs)}: {covered}"
+
+        - name: "tests ValueError for empty input"
+          type: python
+          script: |
+            content = (workspace / 'test_textutils.py').read_text()
+            has_error = 'ValueError' in content or 'raises' in content or 'assertRaises' in content
+            score = 1.0 if has_error else 0.0
+            reason = "Tests error cases" if has_error else "No error case tests found"
+
+    - type: llm_judge
+      weight: 0.4
+      model: claude
+      rubric:
+        coverage: "Do the tests cover meaningful edge cases (empty string, single word, punctuation, mixed case)?"
+        quality: "Are the tests well-structured, readable, and would they catch real bugs?"

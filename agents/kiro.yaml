@@ -1,0 +1,12 @@
+name: Kiro
+type: cli
+config:
+  command:
+    - /home/ec2-user/.local/bin/kiro-cli-chat
+    - chat
+    - --no-interactive
+    - --trust-all-tools
+    - --model
+    - claude-sonnet-4.6
+  timeout: 1800  # 30min for long tasks like order-service
+  credit_price: 0.04  # USD per credit

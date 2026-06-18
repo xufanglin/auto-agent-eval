@@ -1,0 +1,50 @@
+evaluator:
+  type: composite
+  evaluators:
+    - type: code
+      weight: 0.7
+      checks:
+        - name: "all queries pass"
+          type: command
+          cmd: "python test_queries.py"
+          expect_exit: 0
+
+        - name: "Query 1 fixed (SUM quantity*price)"
+          type: python
+          script: |
+            content = (workspace / 'queries.sql').read_text()
+            import re
+            # Find first query block (before second SELECT)
+            first = content[:content.index('SELECT', content.index('SELECT')+1)]
+            fixed = 'quantity' in first.lower() and '*' in first
+            score = 1.0 if fixed else 0.0
+            reason = "Query 1 uses quantity*unit_price" if fixed else "Query 1 still missing quantity"
+
+        - name: "Query 2 fixed (GROUP BY customer_id)"
+          type: python
+          script: |
+            content = (workspace / 'queries.sql').read_text()
+            # Split into queries
+            import re
+            parts = [q.strip() for q in re.sub(r'--[^\n]*','',content).split(';') if q.strip()]
+            q2 = parts[1].lower() if len(parts) > 1 else ''
+            fixed = 'customer_id' in q2 and 'group by' in q2
+            score = 1.0 if fixed else 0.0
+            reason = "GROUP BY customer_id found" if fixed else "GROUP BY customer_id not found"
+
+        - name: "Query 4 fixed (LEFT JOIN)"
+          type: python
+          script: |
+            content = (workspace / 'queries.sql').read_text()
+            import re
+            parts = [q.strip() for q in re.sub(r'--[^\n]*','',content).split(';') if q.strip()]
+            q4 = parts[3].lower() if len(parts) > 3 else ''
+            fixed = 'left join' in q4
+            score = 1.0 if fixed else 0.0
+            reason = "LEFT JOIN found in Query 4" if fixed else "Query 4 still uses INNER JOIN"
+
+    - type: llm_judge
+      weight: 0.3
+      model: claude
+      rubric:
+        correctness: "Are all 5 SQL bugs correctly fixed? Is the logic semantically correct for the described use cases?"

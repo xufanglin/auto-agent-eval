@@ -1,0 +1,9 @@
+name: debug
+prompt: |
+  cart.py is a shopping cart module with 4 bugs. Fix all of them.
+  Run `python test_cart.py` to verify your fixes.
+  Only modify cart.py — do not change test_cart.py.
+metadata:
+  source: custom
+  difficulty: easy
+  category: bugfix

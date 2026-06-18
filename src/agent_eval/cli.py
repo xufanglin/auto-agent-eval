@@ -33,7 +33,8 @@ def print_run(run: EvalRun) -> None:
     print(f"Task:  {run.task_id}")
     print(f"Agent: {run.agent_id}")
     print(f"Score: {r.score:.2f}  {status}")
-    print(f"Time:  {r.duration_seconds:.1f}s")
+    cost_str = f"  💰 ${r.cost_usd:.4f}" if r.cost_usd is not None else (f"  💰 {r.cost:.2f} credits" if r.cost is not None else "")
+    print(f"Time:  {r.duration_seconds:.1f}s{cost_str}")
     print(f"{'─'*60}")
     for m in r.metrics:
         icon = "✅" if m.passed else "❌"
@@ -59,7 +60,16 @@ def print_summary(suite: EvalSuite, tasks: dict) -> None:
     print(f"{'─'*60}")
     if s.by_agent:
         for agent_id, score in s.by_agent.items():
-            print(f"  Agent {agent_id:30s} avg: {score:.0%}")
+            agent_runs = [r for r in suite.runs if r.agent_id == agent_id and r.result]
+            usd = sum(r.result.cost_usd for r in agent_runs if r.result.cost_usd is not None)
+            credits = sum(r.result.cost for r in agent_runs if r.result.cost is not None)
+            if usd:
+                cost_str = f"  💰 ${usd:.4f}"
+            elif credits:
+                cost_str = f"  💰 {credits:.2f} credits"
+            else:
+                cost_str = ""
+            print(f"  Agent {agent_id:30s} avg: {score:.0%}{cost_str}")
     if s.by_category:
         for cat, score in s.by_category.items():
             print(f"  Category {cat:27s} avg: {score:.0%}")
@@ -127,7 +137,20 @@ def _save_results(suite: EvalSuite, tasks: dict, agent_ids: list[str], output: s
             "passed": s.passed,
             "total": s.total,
         },
-        "by_agent": {k: round(v, 4) for k, v in s.by_agent.items()},
+        "by_agent": {
+            k: {
+                "score": round(v, 4),
+                "total_cost": round(sum(
+                    r.result.cost for r in suite.runs
+                    if r.agent_id == k and r.result and r.result.cost is not None
+                ), 4) or None,
+                "total_cost_usd": round(sum(
+                    r.result.cost_usd for r in suite.runs
+                    if r.agent_id == k and r.result and r.result.cost_usd is not None
+                ), 4) or None,
+            }
+            for k, v in s.by_agent.items()
+        },
         "by_category": {k: round(v, 4) for k, v in s.by_category.items()},
         "runs": [
             {
@@ -136,6 +159,8 @@ def _save_results(suite: EvalSuite, tasks: dict, agent_ids: list[str], output: s
                 "score": round(r.result.score, 4) if r.result else 0,
                 "passed": r.result.passed if r.result else False,
                 "duration": r.result.duration_seconds if r.result else 0,
+                "cost": r.result.cost if r.result else None,
+                "cost_usd": r.result.cost_usd if r.result else None,
                 "status": r.status,
             }
             for r in suite.runs

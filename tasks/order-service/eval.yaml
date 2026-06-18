@@ -1,0 +1,126 @@
+evaluator:
+  type: composite
+  evaluators:
+    - type: code
+      weight: 0.6
+      checks:
+        # ── Structure checks ──────────────────────────────────────
+        - name: "project structure exists"
+          type: python
+          script: |
+            pom = list(workspace.rglob('pom.xml'))
+            src = list(workspace.rglob('src/main/java'))
+            score = 1.0 if pom and src else 0.0
+            reason = f"pom.xml: {bool(pom)}, src/main/java: {bool(src)}"
+
+        - name: "Dockerfile exists with multi-stage build"
+          type: python
+          script: |
+            dockerfiles = list(workspace.rglob('Dockerfile'))
+            if not dockerfiles:
+                score, reason = 0.0, "Dockerfile not found"
+            else:
+                content = dockerfiles[0].read_text()
+                stages = content.count('FROM ')
+                score = 1.0 if stages >= 2 else 0.5
+                reason = f"Found Dockerfile with {stages} FROM stage(s)"
+
+        - name: "README.md exists and has substance"
+          type: python
+          script: |
+            readmes = list(workspace.rglob('README.md'))
+            if not readmes:
+                score, reason = 0.0, "README.md not found"
+            else:
+                lines = [l for l in readmes[0].read_text().splitlines() if l.strip()]
+                score = 1.0 if len(lines) >= 10 else len(lines) / 10
+                reason = f"README has {len(lines)} non-empty lines"
+
+        - name: "domain entities exist (Product, Customer, Order)"
+          type: python
+          script: |
+            java_files = [f.name for f in workspace.rglob('*.java')]
+            required = ['Product', 'Customer', 'Order']
+            found = [r for r in required if any(r in f for f in java_files)]
+            score = len(found) / len(required)
+            reason = f"Found entity files for: {found}"
+
+        - name: "REST controllers exist"
+          type: python
+          script: |
+            java_files = [f.name for f in workspace.rglob('*.java')]
+            controllers = [f for f in java_files if 'Controller' in f]
+            score = 1.0 if len(controllers) >= 3 else len(controllers) / 3
+            reason = f"Found controllers: {controllers}"
+
+        - name: "integration tests exist"
+          type: python
+          script: |
+            test_files = list(workspace.rglob('src/test/**/*.java'))
+            score = 1.0 if len(test_files) >= 1 else 0.0
+            reason = f"Found {len(test_files)} test file(s)"
+
+        # ── Build & test ──────────────────────────────────────────
+        - name: "mvn test passes"
+          type: python
+          script: |
+            import subprocess, os
+            poms = list(workspace.rglob('pom.xml'))
+            if not poms:
+                score, reason = 0.0, "pom.xml not found"
+            else:
+                project_dir = poms[0].parent
+                env = {**os.environ, 'JAVA_HOME': '/usr/lib/jvm/java-21-amazon-corretto.aarch64'}
+                mvnw = project_dir / 'mvnw'
+                cmd = ['./mvnw', 'test', '-q', '--no-transfer-progress'] if mvnw.exists() else ['mvn', 'test', '-q', '--no-transfer-progress']
+                r = subprocess.run(cmd, cwd=project_dir, capture_output=True, text=True, timeout=600, env=env)
+                score = 1.0 if r.returncode == 0 else 0.0
+                out = (r.stdout + r.stderr)[-500:]
+                reason = "Tests passed" if score else out
+
+        - name: "docker build and app starts"
+          type: python
+          script: |
+            import subprocess, time, urllib.request, urllib.error
+            # Remove stale image to avoid false positives from previous runs
+            subprocess.run(['docker', 'rmi', '-f', 'order-service-eval:latest'],
+                           capture_output=True, timeout=15)
+            # Rebuild first
+            dockerfiles = list(workspace.rglob('Dockerfile'))
+            if not dockerfiles:
+                score, reason = 0.0, "Dockerfile not found"
+            else:
+                build = subprocess.run(
+                    ['docker', 'build', '-t', 'order-service-eval:latest', '.'],
+                    cwd=dockerfiles[0].parent, capture_output=True, text=True, timeout=600
+                )
+                if build.returncode != 0:
+                    score, reason = 0.0, f"docker build failed, cannot start app"
+                else:
+                    run = subprocess.run(
+                        ['docker', 'run', '-d', '--rm', '-p', '18080:8080',
+                         '--name', 'order-eval-test', 'order-service-eval:latest'],
+                        capture_output=True, text=True, timeout=30
+                    )
+                    if run.returncode != 0:
+                        score, reason = 0.0, f"docker run failed: {run.stderr[:200]}"
+                    else:
+                        time.sleep(15)
+                        try:
+                            resp = urllib.request.urlopen('http://localhost:18080/products', timeout=10)
+                            score = 1.0 if resp.status == 200 else 0.5
+                            reason = f"GET /products returned {resp.status}"
+                        except Exception as e:
+                            score, reason = 0.0, f"App not reachable: {e}"
+                        finally:
+                            subprocess.run(['docker', 'stop', 'order-eval-test'],
+                                           capture_output=True, timeout=15)
+
+    - type: llm_judge
+      weight: 0.4
+      model: claude
+      rubric:
+        api_design: "Do the REST endpoints follow the requirements? Correct HTTP methods, status codes (201/404/409/422), and request/response shapes?"
+        business_logic: "Are the business rules implemented correctly? Stock deduction on order creation, stock restoration on cancel, status transition guards, unitPrice snapshot?"
+        code_quality: "Is the code well-structured with proper separation of concerns (Controller/Service/Repository layers)? Are edge cases handled?"
+        test_quality: "Do the integration tests meaningfully cover the business rules (not just happy paths)?"

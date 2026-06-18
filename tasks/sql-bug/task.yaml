@@ -1,0 +1,10 @@
+name: sql-bug
+prompt: |
+  queries.sql contains 5 SQL queries for an e-commerce database, each with a bug described in the comments.
+  Fix all 5 queries. The database is SQLite.
+  Run `python test_queries.py` to verify your fixes.
+  Only modify queries.sql.
+metadata:
+  source: custom
+  difficulty: medium
+  category: bugfix

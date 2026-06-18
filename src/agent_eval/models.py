@@ -75,6 +75,8 @@ class RunResult:
     metrics: list[MetricResult]
     duration_seconds: float
     agent_output_length: int = 0
+    cost: float | None = None   # credits consumed (kiro/copilot units)
+    cost_usd: float | None = None  # cost in USD
     timestamp: str = ""
 
     def __post_init__(self):

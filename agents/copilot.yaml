@@ -1,0 +1,11 @@
+name: GitHub Copilot CLI
+type: cli
+config:
+  command:
+    - copilot
+    - --yolo
+    - --model
+    - claude-haiku-4.5
+    - -p
+  timeout: 600
+  credit_price: 0.01  # USD per AI Credit

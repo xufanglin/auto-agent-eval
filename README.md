@@ -2,6 +2,8 @@
 
 A pluggable framework for evaluating AI coding agents — **where agents judge agents**.
 
+[中文文档](./README.zh.md)
+
 ## Why "Agent-as-Judge"?
 
 Most benchmarks use simple pass/fail tests. But real-world agent tasks — refactoring code, writing reports, analyzing data — have no single "correct answer". AAE goes beyond **LLM-as-Judge** (a single API call scoring text) to **Agent-as-Judge**: a full agent with tools, file access, and code execution capabilities that reviews another agent's work, just like a human reviewer would.
@@ -245,16 +247,77 @@ evaluator:
 
 ## Adding an Agent
 
+Create a YAML file under `agents/`. The `cli` type works for any agent that accepts a prompt as the last argument:
+
 ```yaml
 # agents/my-agent.yaml
 name: My Agent
 type: cli
 config:
-  command: my-agent-cli
-  timeout: 300
+  command:
+    - my-agent-cli
+    - --some-flag        # flags come before the prompt
+  timeout: 600           # seconds; increase for long tasks (e.g. 1800 for full-stack)
+  credit_price: 0.01     # optional: USD per credit unit, enables cost tracking
 ```
 
-Supported types: `claude-code`, `cli`, `mock`, `script`
+The runner appends the task prompt as the final argument: `my-agent-cli --some-flag "<prompt>"`.
+
+### Supported agent types
+
+| Type | Use case |
+|------|----------|
+| `cli` | Any CLI tool that takes a prompt as the last argument |
+| `claude-code` | Claude Code with environment isolation |
+| `mock` | No-op, for testing the framework |
+| `script` | Python script acting as the agent |
+
+### Real-world examples
+
+**Kiro CLI:**
+```yaml
+name: Kiro
+type: cli
+config:
+  command:
+    - kiro-cli-chat
+    - chat
+    - --no-interactive
+    - --trust-all-tools
+    - --model
+    - claude-sonnet-4.6
+  timeout: 1800
+  credit_price: 0.04
+```
+
+**GitHub Copilot CLI:**
+```yaml
+name: GitHub Copilot CLI
+type: cli
+config:
+  command:
+    - copilot
+    - --yolo
+    - --model
+    - claude-haiku-4.5
+    - -p
+  timeout: 600
+  credit_price: 0.01
+```
+
+### Cost tracking
+
+If `credit_price` is set, the runner parses the agent's output for credit usage and converts to USD automatically. Supported formats:
+
+- Kiro: `▸ Credits: 0.33`
+- Copilot: `AI Credits 5.04`
+
+Cost is shown per-task and aggregated per-agent in the summary:
+
+```
+Agent kiro        avg: 99%  💰 $0.36
+Agent copilot     avg: 86%  💰 $0.48
+```
 
 ## Included Tasks
 
@@ -265,12 +328,26 @@ Supported types: `claude-code`, `cli`, `mock`, `script`
 | wordfreq | coding | easy | Build a word frequency CLI tool from scratch |
 | refactor | refactoring | medium | Refactor messy code while preserving behavior |
 | sales-report | analysis | medium | Analyze CSV data and write a Markdown report |
+| debug | bugfix | easy | Fix 4 logic bugs in a Python shopping cart module |
+| git-conflict | bugfix | easy | Resolve merge conflicts by adopting the feature branch policy |
+| write-tests | testing | medium | Write ≥15 unit tests for a 6-function text utilities module |
+| sql-bug | bugfix | medium | Fix 5 SQL queries (wrong aggregation, GROUP BY, JOIN type, etc.) |
+| order-service | full-stack | hard | Implement a Spring Boot 3 order management service from a requirements doc — including REST API, business logic, integration tests, and Dockerfile |
 
 ## Tech Stack
 
 - **Backend**: Python 3.14, PyYAML, stdlib HTTP server
 - **Frontend**: Vite + React + TypeScript
 - **Package manager**: uv
+
+## Based On
+
+This project is forked from [vokako/auto-agent-eval](https://github.com/vokako/auto-agent-eval) and extends it with:
+
+- **5 new tasks** across bugfix, testing, and full-stack categories — including `order-service`, a hard end-to-end task that requires generating a complete Spring Boot service from a requirements document and verifying it compiles, passes tests, and runs in Docker
+- **Cost tracking** — agents can declare a `credit_price` in their YAML; the runner parses credit usage from CLI output (Kiro and GitHub Copilot formats supported) and reports per-task and total USD cost
+- **`exec` sandbox fix** — Python comprehensions and generator expressions inside `eval.yaml` scripts now work correctly (single-dict globals/locals to avoid Python 3 scoping issues)
+- **Kiro CLI and GitHub Copilot CLI** agent configs as ready-to-use examples
 
 ## References
 
